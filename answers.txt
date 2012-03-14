@@ -13,9 +13,9 @@
 # information you'd like us to know, please add it at the end of the file.
 
 # Partner 1
-Name: 
-Student ID: 
-Email: 
+Name: Zhiyang Wang
+Student ID: 303991529
+Email: seanwangsk@gmail.com
 
 # Partner 2 (if you're working in a team)
 Name: 
@@ -27,14 +27,41 @@ Email:
 
 # EXERCISE 2A: What conditions did you find and fix that would have
 #    triggered a buffer overrun bug?  (~1-3 sentences each)
+If a malicious node query a file whose name's length is super large, when the local system try to get the name, there will be a buffer overflow error. So when trying to grab the file name in the request, now we add a file name length check 
 
 # EXERCISE 2B: What other robustness problems did you fix?  (~1-3 sentences
 #    each)
+1. Local file restriction
+We fulfill the local file restriction by check the head of the requested file name. If it starts with "/", "../" or "~/", then it seems the application trying to access external files, then we just drop the request. Since I've tried to see whether Unix system path parsing could accept blank characters like space in the head and find out that adding blank characters in the head of the path string will cause open syscall error, so its just safe to detect the external file accessing 
+
+2. Infinite file size:
+If the peer keeps transferring data without a EOF to end the transmission (so that every remote read will sucess), the local disk will run full. The evil peer could do this by just having a loop repeatly transferring meaningless data. As the max file size in ext3 is 2GB, we also set the max file size we support in the p2p application as 2GB. 
+
+3. Popular tracker
 
 # EXERCISE 3: Describe the attacks you implemented for "evil mode".  Why
 #    are they attacks?  (~3-10 sentences each)
+File size overflow (evil_mode ==1):
+In this attack, when a victim peer trys to download a file from the attacker, every time the attacker will just repeatly reads from the beginning of the target file for a buffer size and cheat the victim that it is the new data. By doing that the cictim will have to allocate more space for the repeating data until all its disk is exhausted. 
+
+Error checksum attack (evil_mode == 2):
+In this attack, I've tried multiple way to cheat the tracker about the registered checksum but quite frustrated to find that if you registered the checksum for once, it will be recorded in the server forever. 
+The original design is like this: 
+1. first you register the file with the right checksum.
+2. after some other peer downloads your file and also registers in the server, you try to overwrite the checksum in the tracker (but I haven't found way to do that).
+3. if the checksum overwriting success, then unregister the ownership of the file.
+4. as a result, next time some peers want to get that file, it will try to connect to the scapegoat who get the first file from the evil node. And they will keep retransmission over and over due to the wrong checksum.
+
+However, unfortunately, I haven't find the way that could overwrite the checksum. So just a compromised version for that attack, at the first time we just declare wrong checksum. If other guy wanna get that file, it will keep trying to download from us forever. Although this method is not interesting as the original design, if some peers do not check the checksum, they could successfully get the file and become the scapegoat.
+
 
 # Extra credit problems
-#Extra credit problem: none
+#Extra credit problem: checksum
+In our system, the md5 funcitons is encapsulated into our function called "get_md5" which takes a file name as an input argument and return the md5 value for its content. 
+
+the function is called in the following places:
+1. when registering the files to the tracker when first connected with the tracker
+2. when finishing downloading, the system will query the checksum from the tracker for the checksum and makes the comparison. (Notice that after finished downloading, although we will register the ownership of the downloaded file to the server, this time we dont need to send checksum again since its the same as the one for the file from other peers).
+
 
 # Add any other information you'd like us to know below this line.
