@@ -27,11 +27,17 @@ Email:
 
 # EXERCISE 2A: What conditions did you find and fix that would have
 #    triggered a buffer overrun bug?  (~1-3 sentences each)
+If a malicious node query a file whose name's length is super large, when the local system try to get the name, there will be a buffer overflow error. So when trying to grab the file name in the request, now we add a file name length check 
 
 # EXERCISE 2B: What other robustness problems did you fix?  (~1-3 sentences
 #    each)
-Infinite file size:
+1. Local file restriction
+We fulfill the local file restriction by check the head of the requested file name. If it starts with "/", "../" or "~/", then it seems the application trying to access external files, then we just drop the request. Since I've tried to see whether Unix system path parsing could accept blank characters like space in the head and find out that adding blank characters in the head of the path string will cause open syscall error, so its just safe to detect the external file accessing 
+
+2. Infinite file size:
 If the peer keeps transferring data without a EOF to end the transmission (so that every remote read will sucess), the local disk will run full. The evil peer could do this by just having a loop repeatly transferring meaningless data. As the max file size in ext3 is 2GB, we also set the max file size we support in the p2p application as 2GB. 
+
+3. Popular tracker
 
 # EXERCISE 3: Describe the attacks you implemented for "evil mode".  Why
 #    are they attacks?  (~3-10 sentences each)
