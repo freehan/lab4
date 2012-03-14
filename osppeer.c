@@ -705,9 +705,9 @@ void *start_download_task(void *arg)
 
 void *start_upload_task(void *arg)
 {
-//	printf("====Start Uploading File\n");
+	//printf("====Start Uploading File\n");
 	task_upload((task_t *)arg);
-	printf("====thread %ld exit\n", (long)pthread_self());
+	//printf("====thread %ld exit\n", (long)pthread_self());
 	pthread_exit(NULL);
 }
 
@@ -791,7 +791,7 @@ int main(int argc, char *argv[])
 	register_files(tracker_task, myalias);
 
 	//XIA:multithread
-	printf("====Total %d files\n",argc-1);
+	//printf("====Total %d files\n",argc-1);
 	fflush(stdout);
 	pthread_t *thread = malloc(sizeof(pthread_t)*(argc-1));
 	int iret = 0;
@@ -801,7 +801,7 @@ int main(int argc, char *argv[])
 	// First, download files named on command line.
 	for (; argc > 1; argc--, argv++)
 	{
-		printf("====Downloading File %d\n",i+1);
+		//printf("====Downloading File %d\n",i+1);
 		fflush(stdout);
 		if ((t = start_download(tracker_task, argv[1])))
 		{
@@ -818,9 +818,9 @@ int main(int argc, char *argv[])
 	//XIA:waiting for all the downloading tasks to finish
 	for(j=0;j<i;j++)
 	{
-		printf("=====Waiting for Thread %d\n",j+1);
+		//printf("=====Waiting for Thread %d\n",j+1);
 		pthread_join(thread[j], NULL);
-		printf("=====Finish Waiting for Thread %d\n",j+1);
+		//printf("=====Finish Waiting for Thread %d\n",j+1);
 	}
 	free(thread);
 	printf("=====Download Finished\n");
