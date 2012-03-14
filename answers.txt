@@ -41,6 +41,19 @@ If the peer keeps transferring data without a EOF to end the transmission (so th
 
 # EXERCISE 3: Describe the attacks you implemented for "evil mode".  Why
 #    are they attacks?  (~3-10 sentences each)
+File size overflow (evil_mode ==1):
+In this attack, when a victim peer trys to download a file from the attacker, every time the attacker will just repeatly reads from the beginning of the target file for a buffer size and cheat the victim that it is the new data. By doing that the cictim will have to allocate more space for the repeating data until all its disk is exhausted. 
+
+Error checksum attack (evil_mode == 2):
+In this attack, I've tried multiple way to cheat the tracker about the registered checksum but quite frustrated to find that if you registered the checksum for once, it will be recorded in the server forever. 
+The original design is like this: 
+1. first you register the file with the right checksum.
+2. after some other peer downloads your file and also registers in the server, you try to overwrite the checksum in the tracker (but I haven't found way to do that).
+3. if the checksum overwriting success, then unregister the ownership of the file.
+4. as a result, next time some peers want to get that file, it will try to connect to the scapegoat who get the first file from the evil node. And they will keep retransmission over and over due to the wrong checksum.
+
+However, unfortunately, I haven't find the way that could overwrite the checksum. So just a compromised version for that attack, at the first time we just declare wrong checksum. If other guy wanna get that file, it will keep trying to download from us forever. Although this method is not interesting as the original design, if some peers do not check the checksum, they could successfully get the file and become the scapegoat.
+
 
 # Extra credit problems
 #Extra credit problem: checksum

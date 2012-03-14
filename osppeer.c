@@ -40,6 +40,8 @@ static int listen_port;
 #define MAXFILESIZE 2*1024*1024 //the max size of file we could download
 #define MAXRETRYTIME	20	//the max time that retry for download is permitted
 
+int upload_count = 0;
+
 typedef enum tasktype {		// Which type of connection is this?
 	TASK_TRACKER,		// => Tracker connection
 	TASK_PEER_LISTEN,	// => Listens for upload requests
@@ -472,8 +474,17 @@ static void register_files(task_t *tracker_task, const char *myalias)
 		    || (namelen > 1 && ent->d_name[namelen - 1] == '~'))
 			continue;
         
-        char* code = get_md5(ent->d_name);
-		osp2p_writef(tracker_task->peer_fd, "HAVE %s %s\n", ent->d_name,code);
+        char* checksum = get_md5(ent->d_name);
+		//by SK, modify the right checksum
+		if(evil_mode == 2){
+			if(checksum[0]!='0'){
+				checksum[0] = '0';
+			}			
+			else{
+				checksum[0] = '1';
+			}
+		}
+		osp2p_writef(tracker_task->peer_fd, "HAVE %s %s\n", ent->d_name,checksum);
 		messagepos = read_tracker_response(tracker_task);
 		if (tracker_task->buf[messagepos] != '2')
 			error("* Tracker error message while registering '%s':\n%s",
@@ -483,7 +494,31 @@ static void register_files(task_t *tracker_task, const char *myalias)
 	closedir(dir);
 }
 
+//by Sk, to unregister a file
+static void unregister_file(task_t *tracker_task, const char* filename){
+	size_t messagepos;
+	assert(tracker_task->type == TASK_TRACKER);
+	// Register files with the tracker.
+	message("* Unregistering file %s with tracker\n",filename);
+	osp2p_writef(tracker_task->peer_fd, "DONTHAVE %s\n", filename);
+	messagepos = read_tracker_response(tracker_task);
+	if (tracker_task->buf[messagepos] != '2')
+		error("* Tracker error message while unregistering '%s':\n%s",
+			      filename, &tracker_task->buf[messagepos]);
+}
 
+//by SK, to register a file
+static void register_file(task_t *tracker_task, const char* filename, char* checksum){
+	size_t messagepos;
+	assert(tracker_task->type == TASK_TRACKER);
+	// Register files with the tracker.
+	message("* Registering file %s with tracker\n",filename);
+	osp2p_writef(tracker_task->peer_fd, "HAVE %s %s\n", filename,checksum);
+	messagepos = read_tracker_response(tracker_task);
+	if (tracker_task->buf[messagepos] != '2')
+		error("* Tracker error message while registering '%s':\n%s",
+			      filename, &tracker_task->buf[messagepos]);
+}
 // parse_peer(s, len)
 //	Parse a peer specification from the first 'len' characters of 's'.
 //	A peer specification looks like "PEER [alias] [addr]:[port]".
@@ -512,6 +547,7 @@ char* query_checksum(task_t* tracker_task, const char* filename){
 		      filename, &tracker_task->buf[messagepos]);
 		goto exit;
 	}
+	printf("waht buffer is %s\n",tracker_task->buf);
 	char* checksum = (char*) malloc(MD5_TEXT_DIGEST_SIZE);
 	strncpy(checksum, tracker_task->buf,messagepos-1);
     return checksum;
@@ -774,7 +810,7 @@ static void task_upload(task_t *t){
 		error("* Cannot open file %s", t->filename);
 		goto exit;
 	}
-
+    uint32_t tmpHead; 
 	message("* Transferring file %s\n", t->filename);
 	// Now, read file from disk and write it to the requesting peer.
 	while (1) {
@@ -783,8 +819,19 @@ static void task_upload(task_t *t){
 			error("* Peer write error");
 			goto exit;
 		}
+		
+		//do bad:
+		//repeatly write to the file
+		if(evil_mode==1){
+			tmpHead = t->head;
+			t->head = 0; //to cheat the file read, let it always start at the begining
+		}
 
 		ret = read_to_taskbuf(t->disk_fd, t);
+		if(evil_mode==1){
+			t->head  = tmpHead; 
+		}
+		//reset the t->tail t->head will not change but t->tail will change 
 		if (ret == TBUF_ERROR) {
 			error("* Disk read error");
 			goto exit;
@@ -877,11 +924,9 @@ int main(int argc, char *argv[])
 	tracker_task = start_tracker(tracker_addr, tracker_port);
 	listen_task = start_listen();
 	register_files(tracker_task, myalias);
-
 	// First, download files named on command line.
 	for (; argc > 1; argc--, argv++)
 		if ((t = start_download(tracker_task, argv[1]))){
-			query_checksum(tracker_task,argv[1]);
             task_download(t, tracker_task);
         }
 	// Then accept connections from other peers and upload files to them!
