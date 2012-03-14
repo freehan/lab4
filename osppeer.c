@@ -23,6 +23,10 @@
 #include "md5.h"
 #include "osp2p.h"
 
+//XIA: pThread
+#include "pthread.h"
+pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+
 int evil_mode;			// nonzero iff this peer should behave badly
 
 static struct in_addr listen_addr;	// Define listening endpoint
@@ -577,11 +581,16 @@ static void task_download(task_t *t, task_t *tracker_task)
 			t->disk_filename, (unsigned long) t->total_written);
 		// Inform the tracker that we now have the file,
 		// and can serve it to others!  (But ignore tracker errors.)
+
+		//XIA:sync
+		pthread_mutex_lock(&mutex);
 		if (strcmp(t->filename, t->disk_filename) == 0) {
 			osp2p_writef(tracker_task->peer_fd, "HAVE %s\n",
 				     t->filename);
 			(void) read_tracker_response(tracker_task);
 		}
+		pthread_mutex_unlock(&mutex);
+
 		task_free(t);
 		return;
 	}
@@ -679,6 +688,29 @@ static void task_upload(task_t *t)
 	task_free(t);
 }
 
+//XIA: for multithread arguments
+struct arg{
+	task_t *t1;
+	task_t *t2;
+};
+
+void *start_download_task(void *arg)
+{
+//	printf("====Start Downloading File\n");
+	struct arg *ptr = (struct arg*) arg;
+	task_download(ptr->t1,ptr->t2);
+//	printf("====thread %ld exit\n", (long)pthread_self());
+	pthread_exit(NULL);
+}
+
+void *start_upload_task(void *arg)
+{
+//	printf("====Start Uploading File\n");
+	task_upload((task_t *)arg);
+	printf("====thread %ld exit\n", (long)pthread_self());
+	pthread_exit(NULL);
+}
+
 
 // main(argc, argv)
 //	The main loop!
@@ -758,14 +790,57 @@ int main(int argc, char *argv[])
 	listen_task = start_listen();
 	register_files(tracker_task, myalias);
 
+	//XIA:multithread
+	printf("====Total %d files\n",argc-1);
+	fflush(stdout);
+	pthread_t *thread = malloc(sizeof(pthread_t)*(argc-1));
+	int iret = 0;
+	int i = 0, j = 0;
+
+
 	// First, download files named on command line.
 	for (; argc > 1; argc--, argv++)
+	{
+		printf("====Downloading File %d\n",i+1);
+		fflush(stdout);
 		if ((t = start_download(tracker_task, argv[1])))
-			task_download(t, tracker_task);
+		{
+			struct arg *a = malloc(sizeof(struct arg));
+			a->t1 = t;
+			a->t2 = tracker_task;
+			iret = pthread_create(&(thread[i]), NULL, (void *) start_download_task, (void *) a);
+			if(iret)
+				printf("====Thread Creation Error %d",iret);
+			//task_download(t, tracker_task);
+		}
+		i++;
+	}
+	//XIA:waiting for all the downloading tasks to finish
+	for(j=0;j<i;j++)
+	{
+		printf("=====Waiting for Thread %d\n",j+1);
+		pthread_join(thread[j], NULL);
+		printf("=====Finish Waiting for Thread %d\n",j+1);
+	}
+	free(thread);
+	printf("=====Download Finished\n");
 
 	// Then accept connections from other peers and upload files to them!
-	while ((t = task_listen(listen_task)))
-		task_upload(t);
+	//XIA: multithread upload
+	pthread_t *upload_thread = NULL;
+	pthread_attr_t attr;
+	pthread_attr_init(&attr);
+	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
 
+	while ((t = task_listen(listen_task)))
+	{
+		//printf("=====Start Uploading File\n");
+		upload_thread = malloc(sizeof(pthread_t));
+		iret = pthread_create(upload_thread, &attr, (void *) start_upload_task, (void *) t);
+		if(iret)
+			printf("====Thread Creation Error %d",iret);
+		//printf("=====Finish Upload\n");
+		//task_upload(t);
+	}
 	return 0;
 }
