@@ -551,7 +551,6 @@ char* query_checksum(task_t* tracker_task, const char* filename){
 		      filename, &tracker_task->buf[messagepos]);
 		goto exit;
 	}
-	printf("waht buffer is %s\n",tracker_task->buf);
 	char* checksum = (char*) malloc(MD5_TEXT_DIGEST_SIZE);
 	strncpy(checksum, tracker_task->buf,messagepos-1);
     return checksum;
@@ -836,13 +835,14 @@ static void task_upload(task_t *t){
 		//do bad:
 		//repeatly write to the file
 		if(evil_mode==1){
-			tmpHead = t->head;
-			t->head = 0; //to cheat the file read, let it always start at the begining
+			//tmpHead = t->head;
+			//t->head = 0; //to cheat the file read, let it always start at the begining
+			lseek(t->disk_fd,0,0);
 		}
 
 		ret = read_to_taskbuf(t->disk_fd, t);
 		if(evil_mode==1){
-			t->head  = tmpHead; 
+			//t->head  = tmpHead; 
 		}
 		//reset the t->tail t->head will not change but t->tail will change 
 		if (ret == TBUF_ERROR) {
